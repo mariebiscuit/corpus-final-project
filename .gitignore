@@ -1,3 +1,12 @@
+
+raw_scraper_data/*
+*.private
+final_project_files
+scraper.py
+combine_scraper_files.py
+data/raw_scraper_data
+get_credentials.py
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]

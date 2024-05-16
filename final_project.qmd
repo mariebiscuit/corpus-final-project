@@ -1,0 +1,380 @@
+---
+title: "FinalProject"
+format: html
+editor: visual
+---
+
+# Code for CLPS1360 Final Project
+
+When Does 'Zionist' Mean 'Jew'? by Alyssa Loo, Abigail Nelkin & Ariel Stein
+
+```{r}
+setwd('/Users/alyssamarie/Desktop/school/clps1360_corpus_linguistics/corpus-final-project')
+library(reticulate)
+library(ggsignif)
+library(tidyverse)
+library(psych)
+use_python("~/anaconda3/envs/interp/bin/python")
+source_python('masked_completions.py')
+```
+
+# Experiment 1
+
+## 'Racist' dataset
+
+### Data Cleaning + Preprocessing for Masked Language Model
+
+```{r}
+data.e1.racist <- read_csv('./data/racist_compiled.csv')
+
+exclude.pred.racist <- c("( be|being| is|isn't| ur|i'm|was|wasn't|been) racist",
+                  "(are|is|was|is it|seems) racist (to|for|)", "(it's|is it|if you're|be|being|is|i'm) not racist", 
+                  " (he|she|it)'s(| not) racist", 
+                  " (you|we|they)'re(| not) racist",
+                  "(he|she|it)s(| not) racist", 
+                  "(you|we|they)re(| not) racist",
+                  "(you're| be| being| is|isn't| ur|i'm|was|wasn't|were|we're|youre|theyre|they're) (|so|very|just) racist" , 
+                  "were notoriously aggressive & racist")
+
+data.e1.racist <- data.e1.racist %>%
+    mutate(tweet = gsub("@|http[s://]+.+$|http[s://]+.+\\s", "", pull(., tweet))) %>%
+    filter((nchar(data.e1.racist$tweet) > 80) & 
+           (str_count(data.e1.racist$tweet, '[rR]acists?') == 1) & # remove tweets that have more than one mention of racist
+           (str_count(data.e1.racist$tweet, '[rR]acism') == 0) & # remove tweets that mention 'racism'
+           (str_count(data.e1.racist$tweet, '[jJ]ew') == 0) & # remove tweets that have some form of the word jew/jewish
+           (nchar(data.e1.racist$tweet) < 300) & # remove tweets that are too long
+           !grepl(paste(exclude.pred.racist, collapse = "|"), tolower(data.e1.racist$tweet))) %>% # remove predicative uses
+    mutate(masked_tweet = gsub('[rR]acists?', "<mask>", pull(., tweet))) # mask tokens
+
+data.e1.racist <- data.e1.racist %>% 
+    filter(str_count(data.e1.racist$masked_tweet, '<mask>') == 1) # makes sure there is a <mask> token
+
+glimpse(data.e1.racist)
+```
+
+### Getting MLM Completions
+
+```{r}
+## --- Commented out so is not run during run-through to generate HTML
+# outputs <- get_completions(data.e1.racist$masked_tweet, list(jewish=c("Jewish", "Jew", "jew", "jews")))
+# data.e1.racist$logp.jewish <- log(outputs[[2]]$jewish)
+# write.csv(data.e1.racist, './processed_data_cache/exp1_racist_mlm.csv')
+```
+
+## 'Zionist' dataset
+
+### Data Cleaning + Preprocessing for Masked Language Model
+
+```{r}
+data.e1.zionist <- read_csv('./data/zionist_compiled.csv')
+
+exclude.pred.zionist <- c("( be|being| is|isn't| ur|i'm|was|wasn't|been) zionist",
+                  "(are|is|was|is it|seems) zionist (to|for|)", "(it's|is it|if you're|be|being|is|i'm) not zionist", 
+                  " (he|she|it)'s(| not) zionist", 
+                  " (you|we|they)'re(| not) zionist",
+                  "(he|she|it)s(| not) zionist", 
+                  "(you|we|they)re(| not) zionist",
+                  "(you're| be| being| is|isn't| ur|i'm|was|wasn't|were|we're|youre|theyre|they're) (|so|very|just) zionist" , 
+                  "were notoriously aggressive & zionist")
+
+data.e1.zionist <- data.e1.zionist %>%
+    mutate(tweet = gsub("@|http[s://]+.+$|http[s://]+.+\\s", "", pull(., tweet))) %>%
+    filter((nchar(data.e1.zionist$tweet) > 80) & 
+           (str_count(data.e1.zionist$tweet, '[zZ]ionists?') == 1) & # remove tweets that have more than one mention of zionist
+           (str_count(data.e1.zionist$tweet, '[zZ]ionism') == 0) & # remove tweets that mention 'zionism'
+           (str_count(data.e1.zionist$tweet, '[jJ]ew') == 0) & # remove tweets that have some form of the word jew/jewish
+           (nchar(data.e1.zionist$tweet) < 300) & # remove tweets that are too long
+           !grepl(paste(exclude.pred.zionist, collapse = "|"), tolower(data.e1.zionist$tweet))) %>% # remove predicative uses
+    mutate(masked_tweet = gsub('[zZ]ionists?', "<mask>", pull(., tweet))) # mask tokens
+
+data.e1.zionist <- data.e1.zionist %>% 
+    filter(str_count(data.e1.zionist$masked_tweet, '<mask>') == 1) # makes sure there is a <mask> token
+
+glimpse(data.e1.zionist)
+write.csv(data.e1.zionist, './processed_data_cache/exp1_zionist_cleaned.csv')
+```
+
+### Getting MLM Completions
+
+```{r}
+## --- Commented out so is not run during run-through to generate HTML
+# data.e1.zionist <- read_csv('./processed_data_cache/exp1_zionist_cleaned.csv')
+# outputs <- get_completions(data.e1.zionist$masked_tweet, list(jewish=c("Jewish", "Jew", "jew", "jews")))
+# data.e1.zionist$logp.jewish <- log(outputs[[2]]$jewish)
+# write.csv(data.e1.zionist, './processed_data_cache/exp1_zionist_mlm.csv')
+```
+
+## Analysis
+
+This produces Figure 1 in the report.
+
+```{r fig.width=2,fig.height=5}
+data.e1.zionist <- read_csv('./processed_data_cache/exp1_zionist_mlm.csv')
+data.e1.racist <- read_csv('./processed_data_cache/exp1_racist_mlm.csv')
+data.e1 <- rbind(data.e1.zionist, data.e1.racist) 
+
+ggplot(data.e1, aes(x = word, y = logp.jewish, fill = word)) + 
+  geom_boxplot() +
+  geom_signif(comparisons = list(c("racist", "zionist")), 
+              map_signif_level=TRUE,  test="t.test", test.args=list(alternative = "less", var.equal = TRUE, paired=FALSE)) + 
+   geom_dotplot(binaxis = 'y', binwidth=0.012, stackdir = "center") + 
+  labs(x = "Data Set", y = "P(Jewish)") + 
+  scale_x_discrete(labels = c("Racist", "Zionist")) +
+  theme(legend.position="none", text=element_text(family="Times New Roman", size=12),
+   panel.background = element_rect(fill = "white"),
+        panel.grid = element_line(color = "gray"),
+        axis.line = element_line(colour = "black"))
+
+ggsave("./graphs/exp1.png", plot=last_plot(), width = 10, height = 15, units = "cm")
+```
+
+# Experiment 2
+
+## Cleaning data (on top of previous cleaning done on the 'Zionist' dataset)
+
+```{r}
+data.e2 <- read_csv('./processed_data_cache/exp1_zionist_mlm.csv')
+
+data.e2 <- data.e2 %>%
+    filter((str_count(data.e2$tweet, '[iI]sraelis?') == 0) & # remove tweets that mention "Israeli"
+           (str_count(data.e2$tweet, 'an? <mask>') == 0))# remove tweets that have a particle
+
+glimpse(data.e2)
+write.csv(data.e2, './processed_data_cache/exp2_cleaned.csv')
+```
+
+## Getting MLM Completion for 'Israeli'
+
+```{r}
+## --- Commented out so is not run during run-through to generate HTML
+# data.e2 <- read_csv('./processed_data_cache/exp2_cleaned.csv')
+# outputs <- get_completions(data.e2$masked_tweet, list(israeli=c("Israeli", "Israelis")))
+# data.e2$logp.israeli <- log(outputs[[2]]$israeli)
+# write.csv(data.e2, './processed_data_cache/exp2_mlm.csv')
+```
+
+## Calculating neutral sentence norms
+
+```{r}
+neutral.sentences <- readLines("./data/neutral_sentences.txt")
+outputs <- get_completions(neutral.sentences, list(jewish=c("Jewish", "Jew", "jew", "jews"), israeli=c("Israeli", "Israelis")))
+norm.israeli <- log(sum(outputs[[2]]$israeli))
+norm.jewish <- log(sum(outputs[[2]]$jewish))
+paste("Israeli neutral context log-prob:", norm.israeli, "| Jewish neutral context log-prob:", norm.jewish)
+
+data.e2 <- read_csv('./processed_data_cache/exp2_mlm.csv')
+
+data.e2 <- data.e2 %>% 
+  mutate(norm.logp.israeli = pull(., logp.israeli) - norm.israeli,
+         norm.logp.jewish = pull(.,logp.jewish) - norm.jewish)
+
+data.e2 <- data.e2 %>%
+  mutate(diff = pull(., norm.logp.jewish) - pull(., norm.logp.israeli))
+
+glimpse(data.e2)
+
+write.csv(data.e2, './processed_data_cache/exp2_mlm_normed.csv')
+```
+
+## Annotating with Exclusion levels
+
+```{r}
+data.e2 <- read_csv('./processed_data_cache/exp2_mlm_normed.csv')
+
+l1.exclusion <- c("israel", "palestin", "netanyahu", "isreal", "al-aqsa","westbank", "west bank", "gaza", "ramallah", "al-shifa", "hamas", "idf", "isr[*]el","iron dome","irondome", "tal el qamar","m0ssad", "al jazeera", "al qassam","haifa", "gulf", "jenin", "lehi", "bethlehem", "kahan", "knesset", "middle east", "hasbara", "refaat")
+
+l2.exclusion <- c("iron dome", "coloniz", "apartheid", "occupation", "geno","open-air prison", "ethnostate", "ceasefire", "hostages", "settler", "colonial", "jihad", "war crimes", "terrorist", "ethnic minority", "zionist state", "conflict", "zionist project", "imperial",  "mohamed", "allah", "slaughter", "oppress", "freedom fighters", "resistance", "international (law|community)", "terrorstate", "killing babies", "children in quotation", "murder", "bds", "boycott", "khamas", "grill", "ansarallah media", "yemen", "houthi", "since 1970 the us used the veto", "exterminat", "isra helli", "egypt", "doxx", "iran", "(two|2) state solution", "military", "homeland", "ethnically cleanse", "oct 7|10/7", "injuries", "propaganda","arab( |s)", "opens fire", "children", "massacre", "sulaiman", "grenade", "crimes against humanity", "ukr", "raped", "piersmorgan", "bombing", "two months ago","regime")
+
+l3.exclusion <- c("aipac", "blood libel", "holocaust", "antisem", "anti-sem","anti sem", "semit", "rabbi", "judeo", "bernie", "shapiro", "nazi", "schumer", "hakenkreuz", " war", "never again", "schnapp", "juda", "riverdale", "epstein", "yiddish", "nyc", "great replacement", "tribe", "adl ", "not just ben", " neil druckmann|gadot|liebler|cohen|david|noah")
+
+
+data.e2 <- data.e2 %>% 
+  mutate(included.l1 = !grepl(paste(l1.exclusion, collapse = "|"), tolower(data.e2$tweet)),
+         included.l2 = !grepl(paste(c(l1.exclusion, l2.exclusion), collapse = "|"), tolower(data.e2$tweet)),
+         included.l3 = !grepl(paste(c(l1.exclusion, l2.exclusion, l3.exclusion), collapse = "|"), tolower(data.e2$tweet)))
+glimpse(data.e2)
+
+write.csv(data.e2, './processed_data_cache/exp2_for_analysis.csv')
+```
+
+## Analysis
+
+### Significance Tests
+
+These are two calculate the significance results for graphs.
+
+```{r}
+l0.pairedt <- t.test(data.e2$diff, mu = 0, alternative = "greater")
+l1.pairedt <- t.test(filter(data.e2, data.e2$included.l1)$diff, mu = 0, alternative = "greater")
+l2.pairedt <- t.test(filter(data.e2, data.e2$included.l2)$diff, mu = 0, alternative = "greater")
+l3.pairedt <- t.test(filter(data.e2, data.e2$included.l3)$diff, mu = 0, alternative = "greater")
+
+paste("L0 Paired T-Test p=", l0.pairedt$p.value, "| L1 Paired T-Test p=", l1.pairedt$p.value, "| L2 Paired T-Test p=", l2.pairedt$p.value,  "| L3 Paired T-Test p=", l3.pairedt$p.value)
+
+l0.twosided <- t.test(data.e2$diff, mu = 0, alternative = "two.sided")
+paste("L0 Paired 2-Tailed T-Test p=", l0.twosided$p.value)
+```
+
+### Graphs
+
+```{r fig.width=2,fig.height=2}
+data.e2 <- data.e2 %>%
+  mutate(condition='After L0 Exclusion')
+data.e2.l1 <- filter(data.e2, data.e2$included.l1) %>%
+  mutate(condition="After L1 Exclusion")
+data.e2.l2 <- filter(data.e2, data.e2$included.l2) %>%
+  mutate(condition="After L2 Exclusion")
+data.e2.l3 <- filter(data.e2, data.e2$included.l3) %>%
+  mutate(condition="After L3 Exclusion")
+
+data.e2.condsplit <- rbind(data.e2, data.e2.l1, data.e2.l2, data.e2.l3)
+
+data.e2.lengthened <- data.frame(
+  norm.logp = c(data.e2.condsplit$norm.logp.jewish, data.e2.condsplit$norm.logp.israeli),
+  condition = data.e2.condsplit$condition,
+  completion = c(rep("Jewish", length(data.e2.condsplit$norm.logp.jewish)), rep("Israeli", length(data.e2.condsplit$norm.logp.israeli)))) %>%
+  mutate(condition_f = factor(pull(., condition), levels=c('After L0 Exclusion','After L1 Exclusion','After L2 Exclusion','After L3 Exclusion')))
+
+
+annotation_df <- data.frame(
+  condition = c("After L0 Exclusion", "After L1 Exclusion", "After L2 Exclusion", "After L3 Exclusion"),
+  condition_f = levels(data.e2.lengthened$condition_f),
+  start = c("Israeli", "Israeli", "Israeli", "Israeli"),
+  end = c("Jewish", "Jewish", "Jewish", "Jewish"),
+  y = c(4.7, 4.7, 4.7, 4.7),
+  label = c("n.s.", "*", "***", "***")) # based on manual t-tests from previous cell
+
+ggplot(data.e2.lengthened, aes(x = completion, y = norm.logp)) +
+  geom_boxplot(aes(fill=completion)) + 
+  geom_dotplot(binaxis = 'y', binwidth=0.015, stackdir = "center") + 
+  facet_wrap(~condition_f, nrow=1)  +
+  labs(x = "Completion", y = "Normalized Completion Probability") +
+  geom_signif(data = annotation_df,
+    aes(xmin = start, xmax = end, annotations = label, y_position = y),
+    textsize = 3, vjust = -0.2, manual = TRUE) +
+    theme(legend.position="none", text=element_text(family="Times New Roman", size=12),
+        panel.background = element_rect(fill = "white"),
+        panel.grid = element_line(color = "lightgray"),
+        axis.line = element_line(colour = "gray"))
+
+ggsave("./graphs/exp2a.png", plot=last_plot(), width = 20, height = 10, units = "cm")
+```
+
+```{r}
+ggplot(data.e2.condsplit, aes(x = condition, y = diff)) +
+  geom_boxplot(aes(fill=condition)) + 
+  geom_dotplot(binaxis = 'y', binwidth=0.02, stackdir = "center") + 
+  geom_signif(comparisons = list(c("After L0 Exclusion", "After L1 Exclusion")), 
+              map_signif_level=TRUE,  test="t.test", test.args=list(alternative = "less", var.equal = TRUE, paired=FALSE)) + 
+  geom_signif(comparisons = list(c("After L1 Exclusion", "After L2 Exclusion")), 
+              map_signif_level=TRUE,  test="t.test", test.args=list(alternative = "less", var.equal = TRUE, paired=FALSE)) + 
+  geom_signif(comparisons = list(c("After L2 Exclusion", "After L3 Exclusion")), 
+              map_signif_level=TRUE,  test="t.test", test.args=list(alternative = "less", var.equal = TRUE, paired=FALSE)) + 
+  labs(y= "Difference in Normalized Log-Probabilities of Completions (P(Jewish) - P(Israeli))", x = "Exclusion Condition") +
+    theme(legend.position="none", text=element_text(family="Times New Roman", size=12),
+        panel.background = element_rect(fill = "white"),
+        panel.grid = element_line(color = "lightgray"),
+        axis.line = element_line(colour = "gray"))
+
+ggsave("./graphs/exp2b.png", plot=last_plot(), width = 15, height = 20, units = "cm")
+```
+
+# Additional Exploratory Experiments ("Experiment 3")
+
+```{r}
+data.e3 <- read_csv('./processed_data_cache/exp2_for_analysis.csv')
+
+data.e3 <- data.e3 %>% # remove new possible completions
+    filter((str_count(data.e3$tweet, '[mM]uslims?') == 0) &
+           (str_count(data.e3$tweet, '[bB]lacks?') == 0) &
+           (str_count(data.e3$tweet, '[gG]ays?') == 0) &
+           (str_count(data.e3$tweet, '[aA]mericans?') == 0)
+           )
+glimpse(data.e3)
+```
+
+```{r}
+## --- Commented out so is not run during run-through to generate HTML
+# outputs <- get_completions(data.e3$masked_tweet, 
+#           list(muslim=c("muslim", "Muslims", "muslims", "Muslim"),
+#                american=c("American", "american", "americans", "Americans"),
+#                gay = c("gay", "Gays", "Gay", "gays"),
+#                black = c("blacks", "black", "Black")))
+
+# data.e3$logp.muslim <- log(outputs[[2]]$muslim)
+# data.e3$logp.american <- log(outputs[[2]]$american)
+# data.e3$logp.gay <- log(outputs[[2]]$gay)
+# data.e3$logp.black <- log(outputs[[2]]$black)
+# write.csv(data.e3, './processed_data_cache/exp3_mlm.csv')
+```
+
+```{r}
+neutral.sentences <- readLines("./data/neutral_sentences.txt")
+outputs <- get_completions(neutral.sentences, 
+          list(muslim=c("muslim", "Muslims", "muslims", "Muslim"),
+               american=c("American", "american", "americans", "Americans"),
+               gay = c("gay", "Gays", "Gay", "gays"),
+               black = c("blacks", "black", "Black")))
+
+norm.muslim <- log(sum(outputs[[2]]$muslim))
+norm.american <- log(sum(outputs[[2]]$american))
+norm.gay <- log(sum(outputs[[2]]$gay))
+norm.black <- log(sum(outputs[[2]]$black))
+
+paste("Muslim neutral context log-prob:", norm.muslim)
+paste("American neutral context log-prob:", norm.american)
+paste("Gay neutral context log-prob:", norm.gay)
+paste("Black neutral context log-prob:", norm.black)
+
+data.e3 <- read_csv('./processed_data_cache/exp3_mlm.csv')
+
+data.e3 <- data.e3 %>% 
+  mutate(norm.logp.muslim = pull(., logp.muslim) - norm.muslim,
+         norm.logp.american = pull(.,logp.american) - norm.american,
+         norm.logp.gay = pull(.,logp.gay) - norm.gay,
+         norm.logp.black = pull(.,logp.black) - norm.black)
+write.csv(data.e3, './processed_data_cache/exp3_mlm_normed.csv')
+```
+
+```{r}
+data.e3 <- data.e3 %>%
+  mutate(condition='After L0 Exclusion')
+data.e3.l1 <- filter(data.e3, data.e3$included.l1) %>%
+  mutate(condition="After L1 Exclusion")
+data.e3.l2 <- filter(data.e3, data.e3$included.l2) %>%
+  mutate(condition="After L2 Exclusion")
+data.e3.l3 <- filter(data.e3, data.e3$included.l3) %>%
+  mutate(condition="After L3 Exclusion")
+
+data.e3.condsplit <- rbind(data.e3, data.e3.l1, data.e3.l2, data.e3.l3)
+
+data.e3.lengthened <- data.frame(
+  norm.logp = c(data.e3.condsplit$norm.logp.jewish, 
+                data.e3.condsplit$norm.logp.israeli, 
+                data.e3.condsplit$norm.logp.muslim, 
+                data.e3.condsplit$norm.logp.black, 
+                data.e3.condsplit$norm.logp.gay, 
+                data.e3.condsplit$norm.logp.american),
+  condition = data.e3.condsplit$condition,
+  completion = c(rep("Jewish", length(data.e3.condsplit$norm.logp.jewish)), 
+                rep("Israeli", length(data.e3.condsplit$norm.logp.israeli)),
+                rep("Muslim", length(data.e3.condsplit$norm.logp.muslim)),
+                rep("Black", length(data.e3.condsplit$norm.logp.black)),
+                rep("Gay", length(data.e3.condsplit$norm.logp.gay)),
+                rep("American", length(data.e3.condsplit$norm.logp.american)))) %>%
+  mutate(condition_f = factor(pull(., condition), levels=c('After L0 Exclusion','After L1 Exclusion','After L2 Exclusion','After L3 Exclusion')),
+          completion_f = factor(pull(., completion), levels=c("Israeli", "Jewish", "Muslim", "Black", "Gay", "American")))
+
+ggplot(data.e3.lengthened, aes(x = completion_f, y = norm.logp)) +
+  geom_boxplot(aes(fill=completion)) + 
+  geom_dotplot(binaxis = 'y', binwidth=0.01, stackdir = "center") + 
+  facet_wrap(~condition_f, nrow=1)  +
+  labs(x = "Completion", y = "Normalized Completion Probability") +
+    theme(legend.position="none", text=element_text(family="Times New Roman", size=12),
+        panel.background = element_rect(fill = "white"),
+        panel.grid = element_line(color = "lightgray"),
+        axis.line = element_line(colour = "gray"))
+
+ggsave("./graphs/exp3.png", plot=last_plot(), width = 30, height = 10, units = "cm")
+
+```
